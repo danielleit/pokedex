@@ -40,6 +40,7 @@ h1 {
 }
 
 .pokemon-card {
+  position: relative;
   width: 90px;
   background: #fff;
   border-radius: 8px;
@@ -66,4 +67,20 @@ h1 {
   text-transform: capitalize;
   color: #333;
   margin: 0;
+}
+
+.pokemon-card.caught::after {
+  content: '';
+  background: url('img/pokeball.png') no-repeat;
+  background-size: contain;
+  width: 24px;
+  height: 24px;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.pokemon-card.unavailable {
+  opacity: 0.4;
+  filter: grayscale(100%);
 }
