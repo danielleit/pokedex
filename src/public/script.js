@@ -1,29 +1,58 @@
 document.addEventListener('DOMContentLoaded', async () => {
+
   const container = document.getElementById('pokedex');
+
+  // Fecha selects abertos clicando fora
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('select')) {
+      document.querySelectorAll('.pokemon-card select').forEach(s => s.remove());
+    }
+  });
 
   try {
     const response = await fetch('/app?user_id=1');
     const data = await response.json();
 
-    data.forEach(entry => {
+    data.forEach(entry => {  
+      const genNumber = entry.generation_number;
+      const genName = entry.generation;
+      const total = entry.pokemons.length;
+
+      const caught = entry.pokemons.filter(p => p.status === 'caught').length;
+
+      // Considera "sem status" como pokémons que não estão marcados com 'poke_unavailable' ou 'catch_unavailable'
+      const semStatus = entry.pokemons.filter(p =>
+        !p.status || (p.status !== 'poke_unavailable' && p.status !== 'catch_unavailable')
+      ).length;
+
       const title = document.createElement('h2');
-      title.textContent = entry.generation;
-      container.appendChild(title);
+      title.className = 'generation-title';
+      title.textContent = `${genName} (${genNumber}ª Geração)`;
+
+      const titleContainer = document.createElement('div');
+      titleContainer.className = 'generation-header';
+
+      const statusBox = document.createElement('div');
+      statusBox.className = 'status-box';
+      statusBox.textContent = `${caught}/${semStatus}`;
+
+      titleContainer.appendChild(title);
+      titleContainer.appendChild(statusBox);
+      container.appendChild(titleContainer);
 
       const list = document.createElement('div');
       list.className = 'pokemon-list';
 
       entry.pokemons.forEach(pokemon => {
-
         const card = document.createElement('div');
         card.className = 'pokemon-card';
 
         const urlParams = new URLSearchParams(window.location.search);
         const userId = parseInt(urlParams.get('user_id')) || 1;
 
-        // ⬇️ Armazena os dados necessários no elemento
         card.dataset.pokemonId = pokemon.id;
         card.dataset.userId = userId;
+        card.dataset.status = pokemon.status || '';
 
         const img = document.createElement('img');
         img.src = pokemon.sprite_front;
@@ -36,85 +65,55 @@ document.addEventListener('DOMContentLoaded', async () => {
         card.appendChild(name);
         list.appendChild(card);
 
-        // status visual baseado no status salvo no banco
-        if (pokemon.status === 'caught') {
-          card.classList.add('caught');
-        } 
-        
-        if (pokemon.status === 'catch_unavailable') {
-          card.classList.add('unavailable');
-        }
+        aplicarClasseStatus(card, pokemon.status);
 
-        // Clique esquerdo - marcar como 'caught'
+        // Clique esquerdo = toggle 'caught'
         card.addEventListener('click', async () => {
-
-          const userId = parseInt(card.dataset.userId);
-          const pokemonId = parseInt(card.dataset.pokemonId);
-
-          if (pokemon.status === 'caught') {
-            await fetch('/api/pokemon/status', {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user_id: userId,
-                pokemon_id: pokemonId
-              })
-            });
-
-            card.classList.remove('caught');
-            pokemon.status = null; // Atualiza localmente
-            return;
+          const current = card.dataset.status;
+          if (current === 'caught') {
+            await atualizarStatus(card, null);
+          } else {
+            await atualizarStatus(card, 'caught');
           }
-
-          await fetch('/api/pokemon/status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: userId,
-              pokemon_id: pokemonId,
-              status: 'caught'
-            })
-          });
-
-          card.classList.remove('unavailable');
-          card.classList.add('caught');
         });
 
-        // Clique direito - marcar como 'catch_unavailable'
+        // Clique direito = menu de contexto (select)
         card.addEventListener('contextmenu', async (event) => {
-
-          const userId = parseInt(card.dataset.userId);
-          const pokemonId = parseInt(card.dataset.pokemonId);
-
-          if (pokemon.status === 'catch_unavailable') {
-            await fetch('/api/pokemon/status', {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                user_id: userId,
-                pokemon_id: pokemonId
-              })
-            });
-
-            card.classList.remove('caught');
-            pokemon.status = null; // Atualiza localmente
-            return;
-          }
-
           event.preventDefault();
 
-          await fetch('/api/pokemon/status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user_id: userId,
-              pokemon_id: pokemonId,
-              status: 'catch_unavailable'
-            })
+          if (card.querySelector('select')) return;
+
+          const select = document.createElement('select');
+          const options = [
+            { value: '', label: 'Remover status' },
+            { value: 'poke_unavailable', label: 'Pokémon Indisponível' },
+            { value: 'catch_unavailable', label: 'Catch Indisponível' }
+          ];
+
+          options.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            select.appendChild(option);
           });
 
-          card.classList.remove('caught');
-          card.classList.add('unavailable');
+          select.value = card.dataset.status || '';
+
+          select.addEventListener('click', (e) => {
+            e.stopPropagation();
+          });
+
+          select.addEventListener('change', async () => {
+            console.log('Novo status selecionado:', select.value); // teste
+            const newStatus = select.value || null;
+            await atualizarStatus(card, newStatus);
+            select.remove();
+          });
+
+          card.style.position = 'relative';
+          select.style.top = `${event.offsetY}px`;
+          select.style.left = `${event.offsetX}px`;
+          card.appendChild(select);
         });
       });
 
@@ -122,6 +121,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   } catch (err) {
     console.error('Erro ao carregar pokémons:', err);
-    container.innerHTML = '<p>Erro ao carregar dados 😢</p>';
+    container.innerHTML = '<p>Erro ao carregar dados</p>';
   }
+
+  // Função de status genérica
+  async function atualizarStatus(card, newStatus) {
+    const userId = parseInt(card.dataset.userId);
+    const pokemonId = parseInt(card.dataset.pokemonId);
+
+    try {
+      if (newStatus === null) {
+        await fetch('/api/pokemon/status', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, pokemon_id: pokemonId })
+        });
+      } else {
+        await fetch('/api/pokemon/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, pokemon_id: pokemonId, status: newStatus })
+        });
+      }
+
+      aplicarClasseStatus(card, newStatus);
+      card.dataset.status = newStatus || '';
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+    }
+  }
+
+  function aplicarClasseStatus(card, status) {
+    const classMap = {
+      'caught': 'caught',
+      'poke_unavailable': 'poke-unavailable',
+      'catch_unavailable': 'catch-unavailable'
+    };
+
+    card.className = 'pokemon-card'; // Reseta todas as classes
+    if (status && classMap[status]) {
+      card.classList.add(classMap[status]);
+    }
+  }
+
 });
