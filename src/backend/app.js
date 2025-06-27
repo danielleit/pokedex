@@ -15,24 +15,23 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.get('/app', async (req, res) => {
   const userId = req.query.user_id || 1;
   try {
-    const [generationRows] = await db.query('SELECT id, name FROM generation ORDER BY id;');
+    const [generationRows] = await db.query('SELECT id, name, number FROM generation ORDER BY number, name, id;');
     const result = [];
 
     for (const generation of generationRows) {
       const [pokemons] = await db.query(
-        `
-        SELECT p.id, p.name, p.sprite_front, up.status
+        `SELECT p.id, p.name, p.sprite_front, up.status
         FROM pokemon p
         JOIN generation_pokemon gp ON gp.pokemon_id = p.id
         LEFT JOIN user_pokemon up ON up.pokemon_id = p.id AND up.user_id = ?
         WHERE gp.generation_id = ?
-        ORDER BY p.id;
-      `,
+        ORDER BY p.id;`,
       [userId, generation.id]
       );
 
       result.push({
         generation: generation.name,
+        generation_number: generation.number,
         pokemons
       });
     }
@@ -47,17 +46,16 @@ app.get('/app', async (req, res) => {
 app.post('/api/pokemon/status', async (req, res) => {
   const { user_id, pokemon_id, status } = req.body;
 
-  if (!user_id || !pokemon_id) {
-    return res.status(400).json({ error: 'Missing required fields' });
+  const allowedStatuses = ['caught', 'poke_unavailable', 'catch_unavailable'];
+  if (!user_id || !pokemon_id || !allowedStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Missing or invalid fields' });
   }
 
   try {
     await db.query(
-      `
-      INSERT INTO user_pokemon (user_id, pokemon_id, status)
+      `INSERT INTO user_pokemon (user_id, pokemon_id, status)
       VALUES (?, ?, ?)
-      ON DUPLICATE KEY UPDATE status = ?;
-    `,
+      ON DUPLICATE KEY UPDATE status = ?;`,
       [user_id, pokemon_id, status, status]
     );
 
