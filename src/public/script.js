@@ -12,6 +12,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const response = await fetch('/app?user_id=1');
     const data = await response.json();
+    let totalCaught = 0;
+    let totalSemStatus = 0;
+    let totalCaughtRegions = 0;
+    let totalSemStatusRegions = 0;
 
     data.forEach(entry => {  
       const genNumber = entry.generation_number;
@@ -24,6 +28,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const semStatus = entry.pokemons.filter(p =>
         !p.status || (p.status !== 'poke_unavailable' && p.status !== 'catch_unavailable')
       ).length;
+
+      // Ignora gerações que são formas especiais no total das regiões
+      const isRegionalForm = /Form$/i.test(genName); // ex: "Alolan Form", "Galarian Form", etc.
+      if (!isRegionalForm) {
+        totalCaught += caught;
+        totalSemStatus += semStatus;
+      }
+
+      if(isRegionalForm){
+        totalCaughtRegions += caught;
+        totalSemStatusRegions += semStatus;
+      }
 
       const title = document.createElement('h2');
       title.className = 'generation-title';
@@ -116,9 +132,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           card.appendChild(select);
         });
       });
-
       container.appendChild(list);
     });
+
+    const subtitleContainer = document.querySelector('.pokedex-subtitle');
+
+    // Bolha da Pokédex (sem formas regionais)
+    const pokedexBox = document.createElement('div');
+    pokedexBox.className = 'status-box-subtitle pokedex';
+    pokedexBox.textContent = `Pokédex: ${totalCaught}/${totalSemStatus}`;
+
+    // Bolha com formas regionais
+    const regionsBox = document.createElement('div');
+    regionsBox.className = 'status-box-subtitle regions';
+    regionsBox.textContent = `Regions: ${totalCaughtRegions}/${totalSemStatusRegions}`;
+
+    subtitleContainer.appendChild(pokedexBox);
+    subtitleContainer.appendChild(regionsBox);
+
   } catch (err) {
     console.error('Erro ao carregar pokémons:', err);
     container.innerHTML = '<p>Erro ao carregar dados</p>';
